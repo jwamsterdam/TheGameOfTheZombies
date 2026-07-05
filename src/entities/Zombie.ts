@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { GameConfig } from '../config/GameConfig';
 
 const WALK_FRAME_INTERVAL_MS = 220;
 
@@ -16,6 +17,11 @@ export class Zombie extends Phaser.Physics.Arcade.Sprite {
     this.setScale(0.5);
     this.speed = speed;
     this.health = health;
+
+    // Zombies vallen door zwaartekracht en landen op grond/platforms.
+    const body = this.body as Phaser.Physics.Arcade.Body;
+    body.setAllowGravity(true);
+    body.setGravityY(GameConfig.zombie.gravityY);
   }
 
   update(targetX: number, time: number): void {

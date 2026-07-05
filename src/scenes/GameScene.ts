@@ -96,23 +96,38 @@ export class GameScene extends Phaser.Scene {
     this.createHud();
   }
 
-  /** One-way platform: alleen botsen als het object van bovenaf (dalend) op de bovenkant komt. */
+  /**
+   * One-way platform: alleen botsen als het bewegende object van bovenaf (dalend)
+   * op de bovenkant landt. Volgorde-onafhankelijk, want Phaser wisselt de argumenten
+   * om bij groep-vs-array botsingen. Null-veilig tegen net vernietigde bodies.
+   */
   private oneWay(
-    mover:
+    objA:
       | Phaser.Physics.Arcade.Body
       | Phaser.Physics.Arcade.StaticBody
       | Phaser.Tilemaps.Tile
       | Phaser.Types.Physics.Arcade.GameObjectWithBody,
-    platform:
+    objB:
       | Phaser.Physics.Arcade.Body
       | Phaser.Physics.Arcade.StaticBody
       | Phaser.Tilemaps.Tile
       | Phaser.Types.Physics.Arcade.GameObjectWithBody
   ): boolean {
-    const b = (mover as Phaser.Types.Physics.Arcade.GameObjectWithBody).body as Phaser.Physics.Arcade.Body;
-    const p = (platform as Phaser.Types.Physics.Arcade.GameObjectWithBody).body as Phaser.Physics.Arcade.StaticBody;
-    const prevBottom = b.prev.y + b.height;
-    return b.velocity.y >= 0 && prevBottom <= p.top + 8;
+    const ba = (objA as Phaser.Types.Physics.Arcade.GameObjectWithBody).body as
+      | (Phaser.Physics.Arcade.Body & { prev?: Phaser.Math.Vector2 })
+      | undefined;
+    const bb = (objB as Phaser.Types.Physics.Arcade.GameObjectWithBody).body as
+      | (Phaser.Physics.Arcade.Body & { prev?: Phaser.Math.Vector2 })
+      | undefined;
+    if (!ba || !bb) return false;
+
+    // De dynamische (bewegende) body heeft een 'prev'-positie; het platform is statisch.
+    const mover = ba.prev ? ba : bb;
+    const platform = ba.prev ? bb : ba;
+    if (!mover.prev) return false;
+
+    const prevBottom = mover.prev.y + mover.height;
+    return mover.velocity.y >= 0 && prevBottom <= platform.top + 8;
   }
 
   private generateTextures(): void {

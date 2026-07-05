@@ -20,6 +20,8 @@ export interface WeaponDef {
   explodeRadius: number; // 0 = geen explosie
   auto: boolean; // true = vuren zolang muisknop ingedrukt is
   spread: number; // hoek-spreiding in radialen (0 = geen spreiding)
+  gunTexture: string; // sprite van het wapen in de hand
+  muzzleDist: number; // afstand van schouder tot loop-tip (waar projectielen vertrekken)
 }
 
 export const WEAPONS: Record<WeaponId, WeaponDef> = {
@@ -38,6 +40,8 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     explodeRadius: 0,
     auto: false,
     spread: 0,
+    gunTexture: 'gun_rifle',
+    muzzleDist: 42,
   },
   rocket: {
     id: 'rocket',
@@ -54,6 +58,8 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     explodeRadius: 130,
     auto: false,
     spread: 0,
+    gunTexture: 'gun_rocket',
+    muzzleDist: 46,
   },
   grenade: {
     id: 'grenade',
@@ -70,6 +76,8 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     explodeRadius: 150,
     auto: false,
     spread: 0,
+    gunTexture: 'gun_grenade',
+    muzzleDist: 26,
   },
   machinegun: {
     id: 'machinegun',
@@ -86,6 +94,8 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     explodeRadius: 0,
     auto: true,
     spread: 0.05,
+    gunTexture: 'gun_machinegun',
+    muzzleDist: 40,
   },
   flamethrower: {
     id: 'flamethrower',
@@ -102,6 +112,8 @@ export const WEAPONS: Record<WeaponId, WeaponDef> = {
     explodeRadius: 0,
     auto: true,
     spread: 0.22, // brede kegel
+    gunTexture: 'gun_flamethrower',
+    muzzleDist: 40,
   },
 };
 

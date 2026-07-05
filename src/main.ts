@@ -8,7 +8,8 @@ const config: Phaser.Types.Core.GameConfig = {
   height: 600,
   backgroundColor: '#0b0f14',
   scale: {
-    mode: Phaser.Scale.FIT,
+    // RESIZE: het canvas vult het hele venster (geen zwarte balken).
+    mode: Phaser.Scale.RESIZE,
     autoCenter: Phaser.Scale.CENTER_BOTH,
   },
   physics: {

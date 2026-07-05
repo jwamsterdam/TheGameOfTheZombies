@@ -4,23 +4,34 @@ import { Player } from '../entities/Player';
 import { Zombie } from '../entities/Zombie';
 import { ProjectilePool } from '../entities/Projectile';
 import { ZombieSpawner } from '../systems/ZombieSpawner';
-import { WorldGenerator } from '../systems/WorldGenerator';
+import { LevelGenerator } from '../systems/LevelGenerator';
 
 export class GameScene extends Phaser.Scene {
+  private level = 1;
   private player!: Player;
   private zombies!: Phaser.Physics.Arcade.Group;
   private projectiles!: ProjectilePool;
   private spawner!: ZombieSpawner;
-  private worldGenerator!: WorldGenerator;
+  private levelGen!: LevelGenerator;
+  private door!: Phaser.Physics.Arcade.Image;
   private healthBar!: Phaser.GameObjects.Rectangle;
   private weaponText!: Phaser.GameObjects.Text;
+  private levelText!: Phaser.GameObjects.Text;
   private sky!: Phaser.GameObjects.Image;
   private skyline!: Phaser.GameObjects.TileSprite;
   private pointerWasDown = false;
   private isGameOver = false;
+  private isComplete = false;
 
   constructor() {
     super('GameScene');
+  }
+
+  init(data: { level?: number }): void {
+    this.level = data.level ?? 1;
+    this.isGameOver = false;
+    this.isComplete = false;
+    this.pointerWasDown = false;
   }
 
   preload(): void {
@@ -33,36 +44,32 @@ export class GameScene extends Phaser.Scene {
   }
 
   create(): void {
-    this.isGameOver = false;
-    this.pointerWasDown = false;
     this.generateTextures();
 
-    // Lucht: schermvast, vult de hele viewport (grootte volgt de camera in updateBackground()).
-    this.sky = this.add
-      .image(0, 0, 'sky')
-      .setOrigin(0, 0)
-      .setScrollFactor(0)
-      .setDepth(-110);
+    const { levelWidth, levelHeight } = GameConfig.world;
 
-    // Skyline: wereld-gebonden strook waarvan de onderkant precies op groundY staat,
-    // met horizontale parallax (zie updateBackground()).
+    // Achtergrond: schermvaste lucht + wereld-gebonden skyline met parallax.
+    this.sky = this.add.image(0, 0, 'sky').setOrigin(0, 0).setScrollFactor(0).setDepth(-110);
     this.skyline = this.add
       .tileSprite(0, GameConfig.world.groundY, this.scale.width, 260, 'skylineStrip')
       .setOrigin(0, 1)
       .setDepth(-100);
 
-    this.player = new Player(this, 0, GameConfig.world.groundY);
+    // Procedureel level: grond, klimpad van platforms, deur bovenaan.
+    this.levelGen = new LevelGenerator(this);
+    const generated = this.levelGen.generate(this.level);
+    this.door = generated.door;
 
-    // Onzichtbare, zeer brede statische vloer: bovenkant op groundY.
-    const floor = this.add.rectangle(0, GameConfig.world.groundY + 500, 8_000_000, 1000, 0x000000, 0);
-    this.physics.add.existing(floor, true);
-    this.physics.add.collider(this.player, floor);
-
-    this.worldGenerator = new WorldGenerator(this);
-
+    this.player = new Player(this, generated.spawnX, generated.spawnY);
     this.zombies = this.physics.add.group();
     this.projectiles = new ProjectilePool(this);
-    this.spawner = new ZombieSpawner(this, this.zombies);
+    this.spawner = new ZombieSpawner(this, this.zombies, this.level);
+
+    // Botsingen: grond is massief, platforms zijn one-way (van onderaf erdoorheen).
+    this.physics.add.collider(this.player, generated.ground);
+    this.physics.add.collider(this.zombies, generated.ground);
+    this.physics.add.collider(this.player, generated.platforms, undefined, this.oneWay, this);
+    this.physics.add.collider(this.zombies, generated.platforms, undefined, this.oneWay, this);
 
     this.physics.add.overlap(
       this.projectiles.physicsGroup,
@@ -78,22 +85,34 @@ export class GameScene extends Phaser.Scene {
       undefined,
       this
     );
+    this.physics.add.overlap(this.player, this.door, this.completeLevel, undefined, this);
 
-    // Camera: horizontaal volgen (gecentreerd), verticaal vast zodat de grond
-    // altijd onderin beeld staat. Meteen goed positioneren bij het laden.
-    this.updateCamera(true);
+    // Camera volgt de speler in beide richtingen, geclampt op de level-grenzen.
+    this.cameras.main.setBounds(0, 0, levelWidth, levelHeight);
+    this.cameras.main.startFollow(this.player, true, 0.12, 0.12);
+    this.cameras.main.centerOn(this.player.x, this.player.y);
+
     this.updateBackground();
-    this.worldGenerator.update(this.cameras.main.scrollX, this.cameras.main.scrollX + this.cameras.main.width);
-
     this.createHud();
   }
 
-  private updateCamera(snap = false): void {
-    const cam = this.cameras.main;
-    const targetX = this.player.x - cam.width / 2;
-    cam.scrollX = snap ? targetX : cam.scrollX + (targetX - cam.scrollX) * 0.12;
-    // Grond (groundY) staat op ~72% van de hoogte -> genoeg aarde eronder tot de onderrand.
-    cam.scrollY = GameConfig.world.groundY - cam.height * 0.72;
+  /** One-way platform: alleen botsen als het object van bovenaf (dalend) op de bovenkant komt. */
+  private oneWay(
+    mover:
+      | Phaser.Physics.Arcade.Body
+      | Phaser.Physics.Arcade.StaticBody
+      | Phaser.Tilemaps.Tile
+      | Phaser.Types.Physics.Arcade.GameObjectWithBody,
+    platform:
+      | Phaser.Physics.Arcade.Body
+      | Phaser.Physics.Arcade.StaticBody
+      | Phaser.Tilemaps.Tile
+      | Phaser.Types.Physics.Arcade.GameObjectWithBody
+  ): boolean {
+    const b = (mover as Phaser.Types.Physics.Arcade.GameObjectWithBody).body as Phaser.Physics.Arcade.Body;
+    const p = (platform as Phaser.Types.Physics.Arcade.GameObjectWithBody).body as Phaser.Physics.Arcade.StaticBody;
+    const prevBottom = b.prev.y + b.height;
+    return b.velocity.y >= 0 && prevBottom <= p.top + 8;
   }
 
   private generateTextures(): void {
@@ -131,8 +150,8 @@ export class GameScene extends Phaser.Scene {
 
     this.generateGunTextures(g);
 
-    // grond: bovenste 40px is de looplaag, daaronder donkere aarde die doorloopt tot onder beeld
-    const cw = GameConfig.world.chunkWidth;
+    // grond: bovenste 40px is de looplaag, daaronder donkere aarde
+    const cw = 400;
     const groundH = 1000;
     g.fillStyle(0x3b2a20, 1);
     g.fillRect(0, 0, cw, groundH);
@@ -145,7 +164,35 @@ export class GameScene extends Phaser.Scene {
     g.generateTexture('groundChunk', cw, groundH);
     g.clear();
 
-    // lucht: schemergradient over de hele viewport
+    // platform-tegel (40x28), horizontaal getegeld tot een platform
+    g.fillStyle(0x6d4c41, 1);
+    g.fillRect(0, 0, 40, 28);
+    g.fillStyle(0x7a5a48, 1);
+    g.fillRect(2, 2, 17, 11);
+    g.fillRect(21, 2, 17, 11);
+    g.fillRect(2, 15, 17, 11);
+    g.fillRect(21, 15, 17, 11);
+    g.generateTexture('platformTile', 40, 28);
+    g.clear();
+
+    // deur: houten uitgang met groen "EXIT"-randje en gouden knop
+    g.fillStyle(0x2e2116, 1);
+    g.fillRect(0, 0, 48, 74);
+    g.fillStyle(0x5a3d24, 1);
+    g.fillRect(4, 6, 40, 68);
+    g.fillStyle(0x3a2817, 1);
+    g.fillRect(9, 12, 13, 26);
+    g.fillRect(26, 12, 13, 26);
+    g.fillRect(9, 42, 13, 26);
+    g.fillRect(26, 42, 13, 26);
+    g.fillStyle(0xffd54a, 1);
+    g.fillCircle(37, 40, 3);
+    g.fillStyle(0x00e676, 1);
+    g.fillRect(4, 0, 40, 6);
+    g.generateTexture('door', 48, 74);
+    g.clear();
+
+    // lucht: schemergradient
     const skyW = 960;
     const skyH = 600;
     g.fillGradientStyle(0x140a24, 0x140a24, 0x5c3a52, 0xc97a4a, 1);
@@ -153,8 +200,7 @@ export class GameScene extends Phaser.Scene {
     g.generateTexture('sky', skyW, skyH);
     g.clear();
 
-    // skyline-strook: silhouetten van gebouwen met hun onderkant exact op de onderrand,
-    // transparant erboven -> wordt met onderkant op groundY geplaatst.
+    // skyline-strook: gebouw-silhouetten met de onderkant op de onderrand
     const stripW = 900;
     const stripH = 260;
     let seed = 1;
@@ -168,7 +214,6 @@ export class GameScene extends Phaser.Scene {
       const bh = 90 + Math.floor(rand() * 150);
       g.fillStyle(rand() < 0.5 ? 0x1a1420 : 0x241a2e, 1);
       g.fillRect(bx, stripH - bh, bw, bh);
-      // een paar verlichte raampjes
       g.fillStyle(0xffcc66, 0.5);
       for (let wy = stripH - bh + 10; wy < stripH - 8; wy += 22) {
         for (let wx = bx + 6; wx < bx + bw - 6; wx += 16) {
@@ -184,56 +229,51 @@ export class GameScene extends Phaser.Scene {
 
   /** Genereert per wapen een sprite dat de speler in de hand houdt (loop wijst naar rechts). */
   private generateGunTextures(g: Phaser.GameObjects.Graphics): void {
-    // Geweer
     g.fillStyle(0x6d4c41, 1);
-    g.fillRect(0, 2, 12, 10); // houten kolf
+    g.fillRect(0, 2, 12, 10);
     g.fillStyle(0x2b2b2b, 1);
-    g.fillRect(8, 3, 32, 6); // body
+    g.fillRect(8, 3, 32, 6);
     g.fillStyle(0x111111, 1);
-    g.fillRect(40, 4, 8, 4); // loop
+    g.fillRect(40, 4, 8, 4);
     g.generateTexture('gun_rifle', 48, 12);
     g.clear();
 
-    // Rocket launcher
     g.fillStyle(0x37474f, 1);
-    g.fillRect(0, 3, 8, 12); // achterkant
+    g.fillRect(0, 3, 8, 12);
     g.fillStyle(0x5d6d5d, 1);
-    g.fillRect(2, 4, 44, 10); // buis
+    g.fillRect(2, 4, 44, 10);
     g.fillStyle(0xff5722, 1);
-    g.fillRect(44, 2, 8, 14); // oranje tip
+    g.fillRect(44, 2, 8, 14);
     g.generateTexture('gun_rocket', 52, 18);
     g.clear();
 
-    // Granaat: arm/hand met een granaatje
     g.fillStyle(0xe8b48c, 1);
-    g.fillRect(0, 5, 20, 7); // arm
-    g.fillCircle(20, 9, 5); // hand
+    g.fillRect(0, 5, 20, 7);
+    g.fillCircle(20, 9, 5);
     g.fillStyle(0x2e4d2e, 1);
-    g.fillCircle(26, 9, 5); // granaat
+    g.fillCircle(26, 9, 5);
     g.generateTexture('gun_grenade', 30, 16);
     g.clear();
 
-    // Mitrailleur
     g.fillStyle(0x2b2b2b, 1);
-    g.fillRect(0, 5, 8, 7); // kolf
+    g.fillRect(0, 5, 8, 7);
     g.fillStyle(0x1c1c1c, 1);
-    g.fillRect(6, 4, 32, 7); // body
+    g.fillRect(6, 4, 32, 7);
     g.fillStyle(0x333333, 1);
-    g.fillRect(18, 11, 8, 5); // magazijn
+    g.fillRect(18, 11, 8, 5);
     g.fillStyle(0x111111, 1);
-    g.fillRect(38, 6, 8, 3); // loop
+    g.fillRect(38, 6, 8, 3);
     g.generateTexture('gun_machinegun', 46, 16);
     g.clear();
 
-    // Vlammenwerper
     g.fillStyle(0x37474f, 1);
-    g.fillRect(2, 3, 32, 10); // tank/body
+    g.fillRect(2, 3, 32, 10);
     g.fillStyle(0x546e7a, 1);
-    g.fillRect(34, 6, 6, 4); // pijp
+    g.fillRect(34, 6, 6, 4);
     g.fillStyle(0xd32f2f, 1);
-    g.fillRect(40, 5, 6, 6); // rode nozzle
+    g.fillRect(40, 5, 6, 6);
     g.fillStyle(0xffca28, 1);
-    g.fillCircle(46, 8, 3); // waakvlam
+    g.fillCircle(46, 8, 3);
     g.generateTexture('gun_flamethrower', 50, 16);
     g.clear();
   }
@@ -241,11 +281,12 @@ export class GameScene extends Phaser.Scene {
   private createHud(): void {
     this.add.rectangle(16, 16, 204, 20, 0x333333).setScrollFactor(0).setOrigin(0, 0);
     this.healthBar = this.add.rectangle(18, 18, 200, 16, 0xe53935).setScrollFactor(0).setOrigin(0, 0);
-    this.weaponText = this.add
-      .text(16, 44, '', { fontSize: '18px', color: '#ffd54a' })
+    this.weaponText = this.add.text(16, 44, '', { fontSize: '18px', color: '#ffd54a' }).setScrollFactor(0);
+    this.levelText = this.add
+      .text(16, 70, '', { fontSize: '15px', color: '#80d8ff' })
       .setScrollFactor(0);
     this.add
-      .text(16, 70, '1 Geweer  2 Rocket  3 Granaat  4 Mitrailleur  5 Vlammenwerper', {
+      .text(16, 92, '1 Geweer  2 Rocket  3 Granaat  4 Mitrailleur  5 Vlammenwerper', {
         fontSize: '13px',
         color: '#bbbbbb',
       })
@@ -254,25 +295,21 @@ export class GameScene extends Phaser.Scene {
 
   private updateBackground(): void {
     const cam = this.cameras.main;
-    // Lucht vult de hele viewport.
     this.sky.setDisplaySize(cam.width, cam.height);
-    // Skyline volgt de camera horizontaal, staat met de onderkant op groundY; parallax via tilePositionX.
     this.skyline.width = cam.width;
     this.skyline.x = cam.scrollX;
     this.skyline.tilePositionX = cam.scrollX * 0.5;
   }
 
   update(time: number): void {
-    if (this.isGameOver) return;
+    if (this.isGameOver || this.isComplete) return;
 
     const pointer = this.input.activePointer;
 
     this.player.update(time);
-    this.updateCamera();
     this.player.aimAt(pointer.worldX, pointer.worldY);
     this.updateBackground();
-    this.worldGenerator.update(this.cameras.main.scrollX, this.cameras.main.scrollX + this.cameras.main.width);
-    this.spawner.update(time, this.player.x);
+    this.spawner.update(time);
     this.projectiles.update(time, GameConfig.world.groundY, this.explode.bind(this));
 
     this.handleShooting(time, pointer);
@@ -281,7 +318,7 @@ export class GameScene extends Phaser.Scene {
       const zombie = child as Zombie;
       if (zombie.active) {
         zombie.update(this.player.x, time);
-        if (Math.abs(zombie.x - this.player.x) > GameConfig.zombie.spawnMarginX * 2) {
+        if (zombie.y > GameConfig.world.levelHeight + 200) {
           zombie.destroy();
         }
       }
@@ -290,6 +327,7 @@ export class GameScene extends Phaser.Scene {
 
     this.healthBar.width = 200 * (this.player.health / GameConfig.player.maxHealth);
     this.weaponText.setText(this.player.currentWeapon.name);
+    this.levelText.setText(`Level ${this.level}  —  bereik het deurtje`);
 
     if (this.player.isDead()) {
       this.handleGameOver();
@@ -304,7 +342,6 @@ export class GameScene extends Phaser.Scene {
     const wantsToFire = weapon.auto ? pointer.isDown : justDown;
     if (!wantsToFire || !this.player.tryFire(time)) return;
 
-    // Schiet langs de richting waar het wapen op wijst, vanaf de looptip.
     this.projectiles.fire(weapon, this.player.getMuzzleX(), this.player.getMuzzleY(), this.player.aimAngle, time);
   }
 
@@ -355,6 +392,22 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  private completeLevel(): void {
+    if (this.isComplete || this.isGameOver) return;
+    this.isComplete = true;
+
+    this.add
+      .text(this.cameras.main.width / 2, this.cameras.main.height / 2, `LEVEL ${this.level} VOLTOOID!`, {
+        fontSize: '34px',
+        color: '#00e676',
+        align: 'center',
+      })
+      .setScrollFactor(0)
+      .setOrigin(0.5);
+
+    this.time.delayedCall(1200, () => this.scene.restart({ level: this.level + 1 }));
+  }
+
   private handleGameOver(): void {
     this.isGameOver = true;
     this.add
@@ -366,8 +419,6 @@ export class GameScene extends Phaser.Scene {
       .setScrollFactor(0)
       .setOrigin(0.5);
 
-    this.input.once('pointerdown', () => {
-      this.scene.restart();
-    });
+    this.input.once('pointerdown', () => this.scene.restart({ level: this.level }));
   }
 }

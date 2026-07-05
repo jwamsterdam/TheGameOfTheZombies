@@ -1,9 +1,19 @@
 export const GameConfig = {
   world: {
-    groundY: 500,
-    chunkWidth: 400,
-    chunksAhead: 4,
-    chunksBehindToKeep: 2,
+    // Begrensd level: coördinaten van (0,0) linksboven tot (levelWidth, levelHeight).
+    levelWidth: 2600,
+    levelHeight: 1700,
+    groundY: 1450, // hoogte van het grondoppervlak (onderin het level)
+  },
+  level: {
+    // Procedureel klimpad naar de deur.
+    topMargin: 240, // hoogte waarop de bovenste platform/deur ongeveer komt
+    // Sprong-apex is ~264px; op grote verticale stappen is het horizontale bereik kleiner.
+    // Deze grenzen houden elk volgend platform gegarandeerd binnen sprongbereik.
+    verticalStep: { min: 140, max: 190 }, // verticale afstand tussen opeenvolgende platforms
+    horizontalStep: { min: 90, max: 150 }, // horizontale verspringing (ruim binnen sprongbereik)
+    platformTiles: { min: 3, max: 6 }, // breedte van een platform in tegels
+    extraPlatforms: 6, // losse extra platforms voor variatie
   },
   player: {
     moveSpeed: 220,
@@ -17,15 +27,17 @@ export const GameConfig = {
     poolSize: 80,
   },
   zombie: {
-    baseSpeed: 60,
+    baseSpeed: 55,
     baseHealth: 50,
-    spawnMarginX: 500,
+    gravityY: 1200,
+    maxAlive: 34,
   },
   spawner: {
-    graceMs: 3000,
-    initialIntervalMs: 1800,
-    minIntervalMs: 500,
-    intervalDecreasePerPixel: 0.15,
-    speedRampPerPixel: 0.0004,
+    graceMs: 2500,
+    initialIntervalMs: 1600,
+    minIntervalMs: 450,
+    // Moeilijkheid per level: sneller spawnen en meer zombies.
+    intervalDecreasePerLevel: 130,
+    speedIncreasePerLevel: 6,
   },
 } as const;

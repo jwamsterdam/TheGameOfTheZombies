@@ -54,5 +54,7 @@ export class ZombieSpawner {
 
     const zombie = new Zombie(this.scene, x, y, this.speed, GameConfig.zombie.baseHealth);
     this.zombies.add(zombie);
+    // group.add reset de per-body instellingen -> zwaartekracht + hitbox opnieuw toepassen.
+    zombie.configureBody();
   }
 }

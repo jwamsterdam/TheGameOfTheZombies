@@ -17,9 +17,19 @@ export class Zombie extends Phaser.Physics.Arcade.Sprite {
     this.setScale(0.5);
     this.speed = speed;
     this.health = health;
+    this.configureBody();
+  }
 
-    // Zombies vallen door zwaartekracht en landen op grond/platforms.
+  /**
+   * Zet de hitbox strak rond het zichtbare poppetje (het 80x110-frame heeft transparante
+   * marges) en (her)activeert de zwaartekracht. Moet ook ná group.add() aangeroepen worden,
+   * want dat reset de per-body instellingen.
+   */
+  configureBody(): void {
     const body = this.body as Phaser.Physics.Arcade.Body;
+    // Bron-frame is 80x110; personage vult ~x[13..67], y[19..109].
+    body.setSize(46, 88);
+    body.setOffset(17, 22);
     body.setAllowGravity(true);
     body.setGravityY(GameConfig.zombie.gravityY);
   }

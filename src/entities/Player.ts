@@ -7,7 +7,9 @@ const WALK_FRAME_INTERVAL_MS = 150;
 export class Player extends Phaser.Physics.Arcade.Sprite {
   facing: 1 | -1 = 1;
   grounded = true;
+  aimAngle = 0;
   health: number;
+  private gun: Phaser.GameObjects.Image;
   private weaponIndex = 0;
   private lastDamageAt = -Infinity;
   private lastFireAt = -Infinity;
@@ -28,7 +30,11 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     this.setCollideWorldBounds(false);
     this.setOrigin(0.5, 1);
     this.setScale(0.55);
+    this.setDepth(1);
     this.health = GameConfig.player.maxHealth;
+
+    // Wapen in de hand; draait mee met het richten. Grip zit links (origin x klein).
+    this.gun = scene.add.image(x, y, 'gun_rifle').setOrigin(0.15, 0.5).setDepth(2);
 
     const body = this.body as Phaser.Physics.Arcade.Body;
     body.setAllowGravity(true);
@@ -99,19 +105,30 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     }
   }
 
-  /** Laat de speler naar de muis/richtpunt kijken. */
-  faceTowards(worldX: number): void {
+  /** Richt op het (wereld-)punt: draai de speler en het wapen ernaartoe. */
+  aimAt(worldX: number, worldY: number): void {
     this.facing = worldX < this.x ? -1 : 1;
     this.setFlipX(this.facing < 0);
+
+    const shoulderX = this.x;
+    const shoulderY = this.y - this.displayHeight * 0.5;
+    this.aimAngle = Math.atan2(worldY - shoulderY, worldX - shoulderX);
+
+    const w = this.currentWeapon;
+    this.gun.setTexture(w.gunTexture);
+    this.gun.setPosition(shoulderX, shoulderY);
+    this.gun.setRotation(this.aimAngle);
+    // Naar links richten spiegelt het wapen verticaal zodat het niet op z'n kop staat.
+    this.gun.setFlipY(this.facing < 0);
   }
 
-  /** Positie waar projectielen vertrekken (ongeveer op borsthoogte). */
+  /** Positie van de looptip, waar projectielen vertrekken. */
   getMuzzleX(): number {
-    return this.x;
+    return this.gun.x + Math.cos(this.aimAngle) * this.currentWeapon.muzzleDist;
   }
 
   getMuzzleY(): number {
-    return this.y - this.displayHeight * 0.6;
+    return this.gun.y + Math.sin(this.aimAngle) * this.currentWeapon.muzzleDist;
   }
 
   tryFire(time: number): boolean {

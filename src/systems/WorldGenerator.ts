@@ -9,16 +9,18 @@ export class WorldGenerator {
     this.scene = scene;
   }
 
-  update(playerX: number): void {
-    const { chunkWidth, chunksAhead, chunksBehindToKeep } = GameConfig.world;
-    const centerIndex = Math.floor(playerX / chunkWidth);
+  /** Genereert grond-chunks die het volledige zichtbare camerabereik dekken (plus marge). */
+  update(viewLeft: number, viewRight: number): void {
+    const { chunkWidth } = GameConfig.world;
+    const first = Math.floor((viewLeft - chunkWidth) / chunkWidth);
+    const last = Math.floor((viewRight + chunkWidth) / chunkWidth);
 
-    for (let i = centerIndex - 1; i <= centerIndex + chunksAhead; i++) {
+    for (let i = first; i <= last; i++) {
       this.ensureChunk(i);
     }
 
     for (const [index, chunk] of this.chunks) {
-      if (index < centerIndex - chunksBehindToKeep || index > centerIndex + chunksAhead + 1) {
+      if (index < first - 1 || index > last + 1) {
         chunk.destroy();
         this.chunks.delete(index);
       }
